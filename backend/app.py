@@ -146,6 +146,66 @@ def list_groups():
     return jsonify(rows_to_list(rows))
 
 
+@app.route("/api/groups/sync", methods=["POST"])
+def sync_groups():
+    """
+    POST /api/groups/sync
+    Body: { "trips": [ { "name": "...", "invite_code": "..." }, ... ] }
+    Ensures all trips in the caller's local storage exist in this database instance.
+    If an instance restarted or a trip is missing on this container, it is dynamically
+    re-registered so it is immediately available for queries.
+    Returns the synchronized list of groups with current IDs.
+    """
+    data = request.get_json(silent=True) or {}
+    trips = data.get("trips", [])
+    if not isinstance(trips, list):
+        return err("Field 'trips' must be a list.")
+
+    conn = get_db()
+    results = []
+
+    for item in trips:
+        if not isinstance(item, dict):
+            continue
+        code = (item.get("invite_code") or "").strip().lower()
+        name = (item.get("name") or "").strip()
+        if not code and not name:
+            continue
+
+        row = None
+        if code:
+            row = conn.execute(
+                "SELECT id, name, invite_code, created_at FROM groups WHERE lower(invite_code) = ?",
+                (code,)
+            ).fetchone()
+
+        if row is None and name:
+            import secrets
+            if not code:
+                code = secrets.token_hex(4)
+            try:
+                cur = conn.execute(
+                    "INSERT INTO groups (name, invite_code) VALUES (?, ?)",
+                    (name[:100], code)
+                )
+                conn.commit()
+                row = conn.execute(
+                    "SELECT id, name, invite_code, created_at FROM groups WHERE id = ?",
+                    (cur.lastrowid,)
+                ).fetchone()
+            except Exception:
+                row = conn.execute(
+                    "SELECT id, name, invite_code, created_at FROM groups WHERE lower(invite_code) = ?",
+                    (code,)
+                ).fetchone()
+
+        if row:
+            results.append(row_to_dict(row))
+
+    conn.close()
+    return jsonify(results)
+
+
 @app.route("/api/groups/join/<string:code>", methods=["GET"])
 def join_group_by_code(code):
     """
