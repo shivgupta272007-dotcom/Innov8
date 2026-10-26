@@ -2,6 +2,9 @@
 
 > **A polyglot, login-free group expense splitter and settlement platform featuring live analytics, group chat, UPI/QR settlements, an external C data-auditor, and a Java JDBC report engine.**
 
+- **Live Deployment**: [https://innov8-self.vercel.app](https://innov8-self.vercel.app)
+- **GitHub Repository**: [https://github.com/shivgupta272007-dotcom/Innov8](https://github.com/shivgupta272007-dotcom/Innov8)
+
 ---
 
 ## 📑 Table of Contents
