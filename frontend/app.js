@@ -172,7 +172,7 @@ async function loadGroups() {
 
   // Collect invite codes to fetch live group metadata
   const codes = myTrips.map(t => t.invite_code).filter(Boolean);
-  let liveTrips = [];
+  let liveTrips = null;
   if (codes.length > 0) {
     try {
       liveTrips = await api(`/groups?codes=${encodeURIComponent(codes.join(","))}`);
@@ -181,10 +181,19 @@ async function loadGroups() {
     }
   }
 
-  // Update names if server returned updated info
-  if (liveTrips.length > 0) {
-    liveTrips.forEach(lt => saveMyTrip(lt));
-    myTrips = getMyTrips();
+  // If server returned live trips, synchronize and prune any stale wiped/deleted groups
+  if (Array.isArray(liveTrips)) {
+    const validCodes = new Set(liveTrips.map(t => (t.invite_code || "").toLowerCase()));
+    myTrips = myTrips.filter(t => validCodes.has((t.invite_code || "").toLowerCase()));
+    liveTrips.forEach(lt => {
+      const idx = myTrips.findIndex(t => t.id === lt.id || (t.invite_code && t.invite_code.toLowerCase() === (lt.invite_code || "").toLowerCase()));
+      if (idx >= 0) {
+        myTrips[idx] = { id: lt.id, name: lt.name, invite_code: lt.invite_code };
+      } else {
+        myTrips.push({ id: lt.id, name: lt.name, invite_code: lt.invite_code });
+      }
+    });
+    localStorage.setItem("innov8_my_trips", JSON.stringify(myTrips));
   }
 
   myTrips.forEach(g => {
@@ -374,6 +383,14 @@ async function loadMembers() {
     }).join("");
 
   } catch (e) {
+    if (e.message && e.message.toLowerCase().includes("not found")) {
+      // Group no longer exists on server: auto-prune from local storage and return to safe state
+      let trips = getMyTrips().filter(t => t.id !== state.groupId);
+      localStorage.setItem("innov8_my_trips", JSON.stringify(trips));
+      state.groupId = null;
+      loadGroups();
+      return;
+    }
     list.innerHTML = `<p class="loading-msg">Error: ${esc(e.message)}</p>`;
   }
 }
