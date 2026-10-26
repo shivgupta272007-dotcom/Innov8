@@ -1036,8 +1036,8 @@ async function openConnectModal() {
     console.warn("Could not fetch network info:", e);
   }
 
-  // If user opened via the cloudflare tunnel domain, ensure it matches current origin
-  if (window.location.origin.includes(".trycloudflare.com")) {
+  // If user opened via Vercel or Cloudflare, ensure it matches current origin
+  if (window.location.origin.includes(".vercel.app") || window.location.origin.includes(".trycloudflare.com")) {
     connectUrls.public = window.location.origin;
   }
 
