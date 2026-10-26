@@ -12,10 +12,13 @@ PRAGMA foreign_keys = ON;   -- enforce FK rules in SQLite
 -- One row per expense-sharing group.
 -- ─────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS groups (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    name       TEXT    NOT NULL CHECK(length(trim(name)) > 0),
-    created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT    NOT NULL CHECK(length(trim(name)) > 0),
+    invite_code TEXT,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_groups_invite_code ON groups(invite_code);
 
 -- ─────────────────────────────────────────
 -- TABLE: members

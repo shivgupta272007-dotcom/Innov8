@@ -104,15 +104,66 @@ def compute_equal_splits(amount_paise: int, member_ids: list) -> list[tuple]:
 @app.route("/api/groups", methods=["GET"])
 def list_groups():
     """
-    GET /api/groups
-    Returns all groups ordered by newest first.
+    GET /api/groups?codes=code1,code2 or ?ids=1,2
+    Returns groups matching the specified invite codes or ids.
+    If no codes/ids are passed, returns empty list (unless ?all=1 is explicitly requested),
+    ensuring private capability-based isolation so strangers cannot view other trips.
     """
     conn = get_db()
-    rows = conn.execute(
-        "SELECT id, name, created_at FROM groups ORDER BY created_at DESC"
-    ).fetchall()
+    codes = request.args.get("codes")
+    ids = request.args.get("ids")
+    show_all = request.args.get("all") == "1"
+
+    if codes:
+        code_list = [c.strip().lower() for c in codes.split(",") if c.strip()]
+        if code_list:
+            placeholders = ",".join("?" for _ in code_list)
+            rows = conn.execute(
+                f"SELECT id, name, invite_code, created_at FROM groups WHERE lower(invite_code) IN ({placeholders}) ORDER BY created_at DESC",
+                code_list
+            ).fetchall()
+        else:
+            rows = []
+    elif ids:
+        id_list = [int(i.strip()) for i in ids.split(",") if i.strip().isdigit()]
+        if id_list:
+            placeholders = ",".join("?" for _ in id_list)
+            rows = conn.execute(
+                f"SELECT id, name, invite_code, created_at FROM groups WHERE id IN ({placeholders}) ORDER BY created_at DESC",
+                id_list
+            ).fetchall()
+        else:
+            rows = []
+    elif show_all:
+        rows = conn.execute(
+            "SELECT id, name, invite_code, created_at FROM groups ORDER BY created_at DESC"
+        ).fetchall()
+    else:
+        # Default private behavior: return empty list if caller has no codes
+        rows = []
+
     conn.close()
     return jsonify(rows_to_list(rows))
+
+
+@app.route("/api/groups/join/<string:code>", methods=["GET"])
+def join_group_by_code(code):
+    """
+    GET /api/groups/join/<invite_code>
+    Looks up a group by its secret invite code (case-insensitive).
+    Returns the group object or 404 if not found.
+    """
+    code_clean = code.strip().lower()
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, name, invite_code, created_at FROM groups WHERE lower(invite_code) = ?",
+        (code_clean,)
+    ).fetchone()
+    conn.close()
+
+    if row is None:
+        return err("Invalid invite code or group not found.", 404)
+    return jsonify(row_to_dict(row))
 
 
 @app.route("/api/groups", methods=["POST"])
@@ -120,7 +171,7 @@ def create_group():
     """
     POST /api/groups
     Body: { "name": "Weekend Trip" }
-    Returns the newly created group.
+    Returns the newly created group with an unguessable invite_code.
     """
     data = request.get_json(silent=True)  # silent=True → returns None on bad JSON
 
@@ -134,14 +185,18 @@ def create_group():
     if len(name) > 100:
         return err("Group name too long (max 100 chars).")
 
+    # Generate unique 8-char hex invite code
+    import secrets
+    invite_code = secrets.token_hex(4)
+
     # ── Insert (parameterized query prevents SQL injection) ──
     conn = get_db()
-    cur  = conn.execute("INSERT INTO groups (name) VALUES (?)", (name,))
+    cur  = conn.execute("INSERT INTO groups (name, invite_code) VALUES (?, ?)", (name, invite_code))
     conn.commit()
     group_id = cur.lastrowid
 
     row = conn.execute(
-        "SELECT id, name, created_at FROM groups WHERE id = ?", (group_id,)
+        "SELECT id, name, invite_code, created_at FROM groups WHERE id = ?", (group_id,)
     ).fetchone()
     conn.close()
 
@@ -156,7 +211,7 @@ def get_group(gid):
     """
     conn = get_db()
     row  = conn.execute(
-        "SELECT id, name, created_at FROM groups WHERE id = ?", (gid,)
+        "SELECT id, name, invite_code, created_at FROM groups WHERE id = ?", (gid,)
     ).fetchone()
     conn.close()
 

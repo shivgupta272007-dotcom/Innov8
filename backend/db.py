@@ -62,20 +62,39 @@ def _read_sql(path: str) -> str:
 
 def init_db() -> None:
     """
-    Create tables (schema.sql) and load seed data (seed.sql).
-
-    We check whether any groups exist before running seed.sql so that
-    calling init_db() a second time never duplicates data.
+    Create tables (schema.sql), apply schema migrations, and load seed data.
     """
     conn = get_db()
 
-    # 1️⃣  Create tables from schema.sql
+    # 1️⃣  Pre-migration: if groups table already exists, ensure invite_code column exists before indexing
+    try:
+        tables = [r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
+        if "groups" in tables:
+            cols = [r["name"] for r in conn.execute("PRAGMA table_info(groups)")]
+            if "invite_code" not in cols:
+                conn.execute("ALTER TABLE groups ADD COLUMN invite_code TEXT")
+                conn.commit()
+                print("[db] Migrated: added invite_code column to groups table.")
+
+            # Backfill any existing groups that lack an invite_code before creating unique index
+            import secrets
+            rows = conn.execute("SELECT id, name, invite_code FROM groups WHERE invite_code IS NULL").fetchall()
+            for r in rows:
+                code = "goa-trip" if r["id"] == 1 else secrets.token_hex(4)
+                conn.execute("UPDATE groups SET invite_code = ? WHERE id = ?", (code, r["id"]))
+            if rows:
+                conn.commit()
+                print(f"[db] Backfilled invite codes for {len(rows)} group(s).")
+    except Exception as e:
+        print(f"[db] Pre-migration notice: {e}")
+
+    # 2️⃣  Create tables & indexes from schema.sql (includes UNIQUE INDEX idx_groups_invite_code)
     schema_sql = _read_sql(SCHEMA_SQL)
     conn.executescript(schema_sql)      # executescript runs multiple statements
     conn.commit()
-    print("[db] Tables created (or already exist).")
+    print("[db] Tables and indexes created (or already exist).")
 
-    # 2️⃣  Seed demo data only if the DB is empty
+    # 3️⃣  Seed demo data only if the DB is empty
     cursor = conn.execute("SELECT COUNT(*) FROM groups")
     count  = cursor.fetchone()[0]
 

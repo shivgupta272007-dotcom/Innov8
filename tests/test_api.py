@@ -73,24 +73,40 @@ def test_health_check(client):
 # 2. GROUP MANAGEMENT TESTS
 # ══════════════════════════════════════════════════════════════════════════
 
-def test_list_groups(client):
-    """GET /api/groups should include the seeded 'Goa Trip' group."""
+def test_list_groups_empty_without_codes(client):
+    """GET /api/groups without codes or ids returns empty list for privacy."""
     res = client.get("/api/groups")
+    assert res.status_code == 200
+    assert res.get_json() == []
+
+
+def test_list_groups_by_code(client):
+    """GET /api/groups?codes=goa-trip should include the seeded 'Goa Trip' group."""
+    res = client.get("/api/groups?codes=goa-trip")
     assert res.status_code == 200
     groups = res.get_json()
     assert isinstance(groups, list)
-    assert len(groups) >= 1
     assert any(g["name"] == "Goa Trip" for g in groups)
 
 
+def test_join_group_by_code(client):
+    """GET /api/groups/join/goa-trip should return Goa Trip data."""
+    res = client.get("/api/groups/join/goa-trip")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["name"] == "Goa Trip"
+    assert data["invite_code"] == "goa-trip"
+
+
 def test_create_group_valid(client):
-    """POST /api/groups with valid name should return 201 Created."""
+    """POST /api/groups with valid name should return 201 Created with invite_code."""
     res = client.post("/api/groups", json={"name": "Manali Trek"})
     assert res.status_code == 201
     group = res.get_json()
     assert group["name"] == "Manali Trek"
     assert "id" in group
-    assert "created_at" in group
+    assert "invite_code" in group
+    assert len(group["invite_code"]) >= 6
 
 
 def test_create_group_empty_name(client):

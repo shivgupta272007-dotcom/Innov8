@@ -46,11 +46,12 @@
     <div class="select-wrapper">
       <span class="select-icon">✈️</span>
       <select id="groupSelect" aria-label="Select group">
-        <option value="">— Select a group —</option>
+        <option value="">— My Trips —</option>
       </select>
     </div>
-    <button id="btnNewGroup" class="btn btn-accent btn-glow">+ New Group</button>
-    <button id="btnConnectMobile" class="btn btn-outline btn-connect" title="Connect other devices via QR or Link">📱 Connect Mobile</button>
+    <button id="btnNewGroup" class="btn btn-accent btn-glow">+ New Trip</button>
+    <button id="btnJoinTrip" class="btn btn-outline" title="Join trip with secret code or link">🔗 Join Trip</button>
+    <button id="btnConnectMobile" class="btn btn-outline btn-connect" title="Share trip invite link & QR code">📱 Share Trip</button>
   </div>
 </header>
 
@@ -215,9 +216,12 @@
       <span class="floating-bubble bubble-3">🏨</span>
       <div class="welcome-logo">₹</div>
     </div>
-    <h2>Smart Expense Splitting</h2>
-    <p>Track group spending, visualize live analytics, chat with your team, and settle up via instant UPI QR codes.</p>
-    <button id="btnWelcomeNew" class="btn btn-accent btn-lg btn-glow">✨ Create Your First Group</button>
+    <h2>Private & Frictionless Group Expenses</h2>
+    <p>Track shared trip expenses without login walls. Trips are private—only members with your secret invite link or QR code can participate.</p>
+    <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 18px;">
+      <button id="btnWelcomeNew" class="btn btn-accent btn-lg btn-glow">✨ Create a New Trip</button>
+      <button id="btnWelcomeJoin" class="btn btn-outline btn-lg">🔗 Join with Invite Code</button>
+    </div>
   </div>
 </div>
 
@@ -228,16 +232,40 @@
      aria-labelledby="modalNewGroupTitle">
   <div class="modal-box">
     <div class="modal-header">
-      <h3 id="modalNewGroupTitle">🎉 Create New Group</h3>
+      <h3 id="modalNewGroupTitle">🎉 Create New Trip</h3>
       <button class="modal-close" data-close="modalNewGroup" aria-label="Close">✕</button>
     </div>
     <form id="formNewGroup">
-      <label for="inputGroupName">Group Name</label>
-      <input id="inputGroupName" type="text" placeholder="e.g. Goa Trip, Flat 402, Weekend Outing"
+      <label for="inputGroupName">Trip / Group Name</label>
+      <input id="inputGroupName" type="text" placeholder="e.g. Goa Trip, Manali Trek, Flat 402"
              maxlength="100" required>
       <div class="form-error" id="errNewGroup"></div>
       <div class="modal-footer">
-        <button type="submit" class="btn btn-accent btn-glow">Create Group 🚀</button>
+        <button type="submit" class="btn btn-accent btn-glow">Create Trip 🚀</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     MODAL: Join Trip by Code
+     ═══════════════════════════════════════════════════════════ -->
+<div id="modalJoinTrip" class="modal-overlay hidden" role="dialog" aria-modal="true"
+     aria-labelledby="modalJoinTripTitle">
+  <div class="modal-box modal-box-narrow text-center">
+    <div class="modal-header">
+      <h3 id="modalJoinTripTitle">🔗 Join Private Trip</h3>
+      <button class="modal-close" data-close="modalJoinTrip" aria-label="Close">✕</button>
+    </div>
+    <form id="formJoinTrip" autocomplete="off">
+      <p class="connect-desc">Enter the secret invite code or paste the link shared by your friend.</p>
+      <div style="margin: 14px 0 6px; text-align: left;">
+        <label for="inputJoinCode">Secret Code or Link</label>
+        <input id="inputJoinCode" type="text" placeholder="e.g. goa-trip or paste link" required>
+      </div>
+      <div class="form-error" id="errJoinTrip"></div>
+      <div class="modal-footer" style="margin-top: 16px;">
+        <button type="submit" class="btn btn-accent btn-glow" style="width: 100%;">Join Trip 🚀</button>
       </div>
     </form>
   </div>

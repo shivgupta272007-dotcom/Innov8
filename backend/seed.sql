@@ -7,7 +7,7 @@
 PRAGMA foreign_keys = ON;
 
 -- ── Group ─────────────────────────────────────────────────────
-INSERT INTO groups (name) VALUES ('Goa Trip');
+INSERT INTO groups (name, invite_code) VALUES ('Goa Trip', 'goa-trip');
 -- groups.id = 1
 
 -- ── Members (Shubh=1, Shiv=2, Shivansh=3, Shubham=4) ─────────

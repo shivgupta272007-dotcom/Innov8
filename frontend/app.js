@@ -23,13 +23,36 @@ const API = (window.location.port === "5500" || window.location.port === "3000")
   : "/api";
 
 const state = {
-  groupId:       null,
-  members:       [],
-  lastMessageId: 0,
-  chatPollTimer: null,
-  chartMember:   null,
-  chartCategory: null,
+  groupId:         null,
+  groupInviteCode: null,
+  groupName:       null,
+  members:         [],
+  lastMessageId:   0,
+  chatPollTimer:   null,
+  chartMember:     null,
+  chartCategory:   null,
 };
+
+// ── Local Storage "My Trips" helpers ───────────────────────
+function getMyTrips() {
+  try {
+    return JSON.parse(localStorage.getItem("innov8_my_trips")) || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveMyTrip(trip) {
+  if (!trip || !trip.id) return;
+  let trips = getMyTrips();
+  trips = trips.filter(t => t.id !== trip.id && t.invite_code !== trip.invite_code);
+  trips.unshift({
+    id:          trip.id,
+    name:        trip.name,
+    invite_code: trip.invite_code || ""
+  });
+  localStorage.setItem("innov8_my_trips", JSON.stringify(trips));
+}
 
 // Category emoji icons and colors
 const CATEGORY_ICONS = {
@@ -142,27 +165,44 @@ function switchTab(tabName) {
 // ══════════════════════════════════════════════════════════
 
 async function loadGroups() {
-  try {
-    const groups = await api("/groups");
-    const select = document.getElementById("groupSelect");
-    select.innerHTML = `<option value="">— Select a group —</option>`;
+  const select = document.getElementById("groupSelect");
+  let myTrips = getMyTrips();
 
-    groups.forEach(g => {
-      const opt = document.createElement("option");
-      opt.value = g.id;
-      opt.textContent = `✈️ ${g.name}`;
-      select.appendChild(opt);
-    });
+  select.innerHTML = `<option value="">— My Trips —</option>`;
 
-    if (state.groupId) {
-      select.value = state.groupId;
-    } else if (groups.length > 0) {
-      // Auto-select first group for convenient demo
-      select.value = groups[0].id;
-      selectGroup(groups[0].id);
+  // Collect invite codes to fetch live group metadata
+  const codes = myTrips.map(t => t.invite_code).filter(Boolean);
+  let liveTrips = [];
+  if (codes.length > 0) {
+    try {
+      liveTrips = await api(`/groups?codes=${encodeURIComponent(codes.join(","))}`);
+    } catch (e) {
+      console.warn("Could not sync trips with server:", e);
     }
-  } catch (e) {
-    toast("Could not load groups: " + e.message, "error");
+  }
+
+  // Update names if server returned updated info
+  if (liveTrips.length > 0) {
+    liveTrips.forEach(lt => saveMyTrip(lt));
+    myTrips = getMyTrips();
+  }
+
+  myTrips.forEach(g => {
+    const opt = document.createElement("option");
+    opt.value = g.id;
+    opt.dataset.code = g.invite_code || "";
+    opt.dataset.name = g.name;
+    opt.textContent = `✈️ ${g.name}`;
+    select.appendChild(opt);
+  });
+
+  if (state.groupId && myTrips.some(t => t.id === state.groupId)) {
+    select.value = state.groupId;
+  } else if (myTrips.length > 0) {
+    select.value = myTrips[0].id;
+    selectGroup(myTrips[0].id);
+  } else {
+    selectGroup(null);
   }
 }
 
@@ -173,6 +213,16 @@ function selectGroup(id) {
   if (state.chatPollTimer) {
     clearInterval(state.chatPollTimer);
     state.chatPollTimer = null;
+  }
+
+  const select = document.getElementById("groupSelect");
+  const selectedOption = select.querySelector(`option[value="${id}"]`);
+  if (selectedOption) {
+    state.groupInviteCode = selectedOption.dataset.code || "";
+    state.groupName       = selectedOption.dataset.name || "";
+  } else {
+    state.groupInviteCode = null;
+    state.groupName       = null;
   }
 
   if (state.groupId) {
@@ -197,7 +247,8 @@ async function createGroup(name) {
       body: JSON.stringify({ name }),
     });
 
-    toast(`Group "${group.name}" created! 🚀`);
+    saveMyTrip(group);
+    toast(`Trip "${group.name}" created! 🚀`);
     closeModal("modalNewGroup");
     document.getElementById("formNewGroup").reset();
 
@@ -206,6 +257,37 @@ async function createGroup(name) {
     selectGroup(group.id);
   } catch (e) {
     showErr("errNewGroup", e.message);
+  }
+}
+
+async function joinTripByCode(codeOrUrl) {
+  if (!codeOrUrl) return;
+  let code = codeOrUrl.trim();
+
+  // If user pasted a full URL
+  if (code.includes("join=") || code.includes("group=") || code.includes("code=")) {
+    try {
+      const url = new URL(code, window.location.origin);
+      code = url.searchParams.get("join") || url.searchParams.get("group") || url.searchParams.get("code") || code;
+    } catch (e) {
+      const m = code.match(/(?:join|group|code)=([a-zA-Z0-9_-]+)/);
+      if (m) code = m[1];
+    }
+  }
+
+  try {
+    const group = await api(`/groups/join/${encodeURIComponent(code)}`);
+    saveMyTrip(group);
+    closeModal("modalJoinTrip");
+    document.getElementById("formJoinTrip")?.reset();
+    toast(`Joined "${group.name}"! 🎉`);
+
+    await loadGroups();
+    document.getElementById("groupSelect").value = group.id;
+    selectGroup(group.id);
+  } catch (e) {
+    showErr("errJoinTrip", e.message || "Invalid invite code or group not found.");
+    toast(e.message || "Could not join trip", "error");
   }
 }
 
@@ -888,8 +970,16 @@ function showQR(qrUrl, upiLink, description) {
 // 10. EVENT LISTENERS
 // ══════════════════════════════════════════════════════════
 
-document.addEventListener("DOMContentLoaded", () => {
-  loadGroups();
+document.addEventListener("DOMContentLoaded", async () => {
+  // Check URL query parameters for invite links: ?join=XYZ or ?group=XYZ or ?code=XYZ
+  const urlParams = new URLSearchParams(window.location.search);
+  const inviteParam = urlParams.get("join") || urlParams.get("group") || urlParams.get("code");
+  if (inviteParam) {
+    await joinTripByCode(inviteParam);
+    window.history.replaceState({}, document.title, window.location.pathname);
+  } else {
+    await loadGroups();
+  }
 
   document.getElementById("groupSelect").addEventListener("change", e => {
     selectGroup(e.target.value);
@@ -910,6 +1000,33 @@ document.addEventListener("DOMContentLoaded", () => {
     openModal("modalNewGroup");
     document.getElementById("inputGroupName").focus();
   });
+
+  const btnJoinTrip = document.getElementById("btnJoinTrip");
+  if (btnJoinTrip) {
+    btnJoinTrip.addEventListener("click", () => {
+      clearErr("errJoinTrip");
+      openModal("modalJoinTrip");
+      document.getElementById("inputJoinCode")?.focus();
+    });
+  }
+
+  const btnWelcomeJoin = document.getElementById("btnWelcomeJoin");
+  if (btnWelcomeJoin) {
+    btnWelcomeJoin.addEventListener("click", () => {
+      clearErr("errJoinTrip");
+      openModal("modalJoinTrip");
+      document.getElementById("inputJoinCode")?.focus();
+    });
+  }
+
+  const formJoinTrip = document.getElementById("formJoinTrip");
+  if (formJoinTrip) {
+    formJoinTrip.addEventListener("submit", e => {
+      e.preventDefault();
+      const code = document.getElementById("inputJoinCode").value.trim();
+      joinTripByCode(code);
+    });
+  }
 
   document.getElementById("formNewGroup").addEventListener("submit", e => {
     e.preventDefault();
@@ -1054,26 +1171,29 @@ function showConnectTab(tab) {
   const input     = document.getElementById("connectUrlInput");
   const hint      = document.getElementById("connectHint");
 
-  const url = (tab === "local") ? connectUrls.local : connectUrls.public;
+  const baseUrl = (tab === "local") ? connectUrls.local : connectUrls.public;
+  const fullInviteUrl = state.groupInviteCode
+    ? `${baseUrl}/?join=${encodeURIComponent(state.groupInviteCode)}`
+    : baseUrl;
 
   if (tab === "local") {
     btnLocal.classList.add("active");
     btnPublic.classList.remove("active");
-    hint.textContent = "📶 All devices must be connected to the SAME Wi-Fi or your Phone's Hotspot.";
+    hint.textContent = "📶 For devices on the SAME Wi-Fi or your Phone's Hotspot.";
   } else {
     btnPublic.classList.add("active");
     btnLocal.classList.remove("active");
-    hint.textContent = "🌍 Works from ANYWHERE IN THE WORLD on mobile cellular data (4G/5G) or any Wi-Fi!";
+    hint.textContent = "🌍 Secret invite link! Anyone with this link or QR code can join this private trip.";
   }
 
-  input.value = url;
+  input.value = fullInviteUrl;
 
   // Render QR Code in modal
   const qrBox = document.getElementById("connectQRCode");
   qrBox.innerHTML = "";
   if (typeof QRCode !== "undefined") {
     new QRCode(qrBox, {
-      text: url,
+      text: fullInviteUrl,
       width: 180,
       height: 180,
       colorDark: "#091322",
