@@ -45,13 +45,25 @@ function getMyTrips() {
 function saveMyTrip(trip) {
   if (!trip || !trip.id) return;
   let trips = getMyTrips();
-  trips = trips.filter(t => t.id !== trip.id && t.invite_code !== trip.invite_code);
+  trips = trips.filter(t => t.id !== trip.id && (trip.invite_code ? (t.invite_code || "").toLowerCase() !== trip.invite_code.toLowerCase() : true));
   trips.unshift({
     id:          trip.id,
     name:        trip.name,
     invite_code: trip.invite_code || ""
   });
   localStorage.setItem("innov8_my_trips", JSON.stringify(trips));
+}
+
+/** Explicitly remove / leave a trip from this device's saved trips */
+function removeTripFromDevice(id) {
+  if (!id) return;
+  let trips = getMyTrips().filter(t => t.id !== id);
+  localStorage.setItem("innov8_my_trips", JSON.stringify(trips));
+  if (state.groupId === id) {
+    state.groupId = null;
+    localStorage.removeItem("innov8_active_group_id");
+  }
+  loadGroups();
 }
 
 // Category emoji icons and colors
@@ -170,8 +182,8 @@ async function loadGroups() {
 
   select.innerHTML = `<option value="">— My Trips —</option>`;
 
-  // On first visit, auto-seed the demo "Goa Trip" if local storage is empty
-  if (myTrips.length === 0) {
+  // On first visit ever, auto-seed the demo "Goa Trip" into local storage
+  if (!localStorage.getItem("innov8_initialized") && myTrips.length === 0) {
     try {
       const defaultTrip = await api("/groups/join/goa-trip");
       if (defaultTrip && defaultTrip.id) {
@@ -180,6 +192,8 @@ async function loadGroups() {
       }
     } catch (e) {
       // Demo trip fallback
+    } finally {
+      localStorage.setItem("innov8_initialized", "1");
     }
   }
 
@@ -244,6 +258,16 @@ function selectGroup(id) {
     localStorage.removeItem("innov8_active_group_id");
   }
 
+  // Show or hide "Leave Trip" button based on group selection
+  const btnLeave = document.getElementById("btnLeaveTrip");
+  if (btnLeave) {
+    if (state.groupId) {
+      btnLeave.classList.remove("hidden");
+    } else {
+      btnLeave.classList.add("hidden");
+    }
+  }
+
   if (state.chatPollTimer) {
     clearInterval(state.chatPollTimer);
     state.chatPollTimer = null;
@@ -295,15 +319,17 @@ async function createGroup(name) {
   }
 }
 
-async function joinTripByCode(codeOrUrl) {
+async function joinTripByCode(codeOrUrl, tripName = null) {
   if (!codeOrUrl) return;
   let code = codeOrUrl.trim();
+  let nameFromUrl = tripName;
 
   // If user pasted a full URL
   if (code.includes("join=") || code.includes("group=") || code.includes("code=")) {
     try {
       const url = new URL(code, window.location.origin);
       code = url.searchParams.get("join") || url.searchParams.get("group") || url.searchParams.get("code") || code;
+      if (!nameFromUrl) nameFromUrl = url.searchParams.get("name");
     } catch (e) {
       const m = code.match(/(?:join|group|code)=([a-zA-Z0-9_-]+)/);
       if (m) code = m[1];
@@ -311,8 +337,25 @@ async function joinTripByCode(codeOrUrl) {
   }
 
   try {
-    const group = await api(`/groups/join/${encodeURIComponent(code)}`);
+    let group = null;
+    try {
+      group = await api(`/groups/join/${encodeURIComponent(code)}`);
+    } catch (joinErr) {
+      // If serverless container cold-started and doesn't have the code yet, sync it with name!
+      if (nameFromUrl || code) {
+        const synced = await api("/groups/sync", {
+          method: "POST",
+          body: JSON.stringify({ trips: [{ name: nameFromUrl || "Shared Trip", invite_code: code }] })
+        });
+        if (Array.isArray(synced) && synced.length > 0) {
+          group = synced[0];
+        }
+      }
+      if (!group) throw joinErr;
+    }
+
     saveMyTrip(group);
+    localStorage.setItem("innov8_active_group_id", group.id);
     closeModal("modalJoinTrip");
     document.getElementById("formJoinTrip")?.reset();
     toast(`Joined "${group.name}"! 🎉`);
@@ -1034,8 +1077,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Check URL query parameters for invite links: ?join=XYZ or ?group=XYZ or ?code=XYZ
   const urlParams = new URLSearchParams(window.location.search);
   const inviteParam = urlParams.get("join") || urlParams.get("group") || urlParams.get("code");
+  const nameParam = urlParams.get("name");
   if (inviteParam) {
-    await joinTripByCode(inviteParam);
+    await joinTripByCode(inviteParam, nameParam);
     window.history.replaceState({}, document.title, window.location.pathname);
   } else {
     await loadGroups();
@@ -1076,6 +1120,28 @@ document.addEventListener("DOMContentLoaded", async () => {
       clearErr("errJoinTrip");
       openModal("modalJoinTrip");
       document.getElementById("inputJoinCode")?.focus();
+    });
+  }
+
+  // ── Leave Trip button & confirmation modal listeners ───
+  const btnLeaveTrip = document.getElementById("btnLeaveTrip");
+  if (btnLeaveTrip) {
+    btnLeaveTrip.addEventListener("click", () => {
+      if (!state.groupId) return;
+      const nameEl = document.getElementById("leaveTripName");
+      if (nameEl) nameEl.textContent = `"${state.groupName || "this trip"}"`;
+      openModal("modalLeaveTrip");
+    });
+  }
+
+  const btnConfirmLeave = document.getElementById("btnConfirmLeaveTrip");
+  if (btnConfirmLeave) {
+    btnConfirmLeave.addEventListener("click", () => {
+      const idToRemove = state.groupId;
+      const nameToRemove = state.groupName || "Trip";
+      closeModal("modalLeaveTrip");
+      removeTripFromDevice(idToRemove);
+      toast(`Removed "${nameToRemove}" from this device.`);
     });
   }
 
@@ -1233,7 +1299,7 @@ function showConnectTab(tab) {
 
   const baseUrl = (tab === "local") ? connectUrls.local : connectUrls.public;
   const fullInviteUrl = state.groupInviteCode
-    ? `${baseUrl}/?join=${encodeURIComponent(state.groupInviteCode)}`
+    ? `${baseUrl}/?join=${encodeURIComponent(state.groupInviteCode)}&name=${encodeURIComponent(state.groupName || "")}`
     : baseUrl;
 
   if (tab === "local") {

@@ -52,6 +52,7 @@
     <button id="btnNewGroup" class="btn btn-accent btn-glow">+ New Trip</button>
     <button id="btnJoinTrip" class="btn btn-outline" title="Join trip with secret code or link">🔗 Join Trip</button>
     <button id="btnConnectMobile" class="btn btn-outline btn-connect" title="Share trip invite link & QR code">📱 Share Trip</button>
+    <button id="btnLeaveTrip" class="btn btn-outline btn-leave hidden" title="Remove this trip from this device">✕ Leave Trip</button>
   </div>
 </header>
 
@@ -436,6 +437,30 @@
       <p id="connectHint" class="connect-hint">
         ⚡ Point your phone camera at the QR code above or share the link on WhatsApp to collaborate live!
       </p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     MODAL: Leave / Remove Trip from Device
+     ═══════════════════════════════════════════════════════════ -->
+<div id="modalLeaveTrip" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modalLeaveTitle">
+  <div class="modal-box modal-box-narrow text-center">
+    <div class="modal-header">
+      <h3 id="modalLeaveTitle">✕ Leave Trip</h3>
+      <button class="modal-close" data-close="modalLeaveTrip" aria-label="Close">✕</button>
+    </div>
+    <div style="padding: 10px 0 20px;">
+      <p style="margin-bottom: 12px; font-size: 15px; color: var(--text-primary); line-height: 1.5;">
+        Remove <strong id="leaveTripName" style="color: var(--beige-accent);">this trip</strong> from this device?
+      </p>
+      <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.4;">
+        🔒 All trip data remains safely preserved. You can re-join anytime using the secret invite link or QR code.
+      </p>
+    </div>
+    <div style="display: flex; gap: 10px; justify-content: center;">
+      <button type="button" class="btn btn-outline" data-close="modalLeaveTrip">Cancel</button>
+      <button type="button" id="btnConfirmLeaveTrip" class="btn btn-danger" style="background:#ef4444; color:#fff; border:none; padding:10px 20px; border-radius:var(--radius-md); font-weight:600; cursor:pointer;">Remove from Device</button>
     </div>
   </div>
 </div>
