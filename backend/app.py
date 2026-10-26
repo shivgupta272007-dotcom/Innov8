@@ -150,11 +150,19 @@ def list_groups():
 def sync_groups():
     """
     POST /api/groups/sync
-    Body: { "trips": [ { "name": "...", "invite_code": "..." }, ... ] }
-    Ensures all trips in the caller's local storage exist in this database instance.
-    If an instance restarted or a trip is missing on this container, it is dynamically
-    re-registered so it is immediately available for queries.
-    Returns the synchronized list of groups with current IDs.
+    Body: {
+      "trips": [
+        {
+          "name": "...",
+          "invite_code": "...",
+          "members": [ { "name": "...", "upi_id": "..." } ],
+          "expenses": [ { "title": "...", "amount_paise": ..., "payer_name": "...", "category": "...", "splits": [ { "member_name": "...", "share_paise": ... } ] } ]
+        }
+      ]
+    }
+    Ensures all trips, members, and expenses in the caller's storage exist in this database instance.
+    If a serverless container cold-started, dynamically re-registers the trip and re-populates its members and expenses.
+    Returns the synchronized list of groups with current IDs and member rosters.
     """
     data = request.get_json(silent=True) or {}
     trips = data.get("trips", [])
@@ -169,6 +177,8 @@ def sync_groups():
             continue
         code = (item.get("invite_code") or "").strip().lower()
         name = (item.get("name") or "").strip()
+        members_input = item.get("members", [])
+        expenses_input = item.get("expenses", [])
         if not code and not name:
             continue
 
@@ -200,7 +210,82 @@ def sync_groups():
                 ).fetchone()
 
         if row:
-            results.append(row_to_dict(row))
+            gid = row["id"]
+
+            # Re-hydrate members if provided
+            if isinstance(members_input, list) and len(members_input) > 0:
+                for m in members_input:
+                    if not isinstance(m, dict):
+                        continue
+                    m_name = (m.get("name") or "").strip()
+                    m_upi = (m.get("upi_id") or "").strip() or None
+                    if not m_name:
+                        continue
+                    m_exists = conn.execute(
+                        "SELECT id FROM members WHERE group_id = ? AND lower(name) = lower(?)",
+                        (gid, m_name)
+                    ).fetchone()
+                    if not m_exists:
+                        conn.execute(
+                            "INSERT INTO members (group_id, name, upi_id) VALUES (?, ?, ?)",
+                            (gid, m_name[:80], m_upi)
+                        )
+                conn.commit()
+
+            # Re-hydrate expenses if provided
+            if isinstance(expenses_input, list) and len(expenses_input) > 0:
+                for exp in expenses_input:
+                    if not isinstance(exp, dict):
+                        continue
+                    exp_title = (exp.get("title") or "").strip()
+                    exp_amount = exp.get("amount_paise")
+                    exp_payer = (exp.get("payer_name") or "").strip()
+                    exp_cat = (exp.get("category") or "General").strip()
+                    splits = exp.get("splits", [])
+                    if not exp_title or not exp_amount or not exp_payer:
+                        continue
+
+                    payer_row = conn.execute(
+                        "SELECT id FROM members WHERE group_id = ? AND lower(name) = lower(?)",
+                        (gid, exp_payer)
+                    ).fetchone()
+                    if not payer_row:
+                        continue
+                    payer_id = payer_row["id"]
+
+                    exp_exists = conn.execute(
+                        "SELECT id FROM expenses WHERE group_id = ? AND title = ? AND amount_paise = ?",
+                        (gid, exp_title, exp_amount)
+                    ).fetchone()
+                    if not exp_exists:
+                        cur_e = conn.execute(
+                            "INSERT INTO expenses (group_id, title, amount_paise, payer_id, category) VALUES (?, ?, ?, ?, ?)",
+                            (gid, exp_title, exp_amount, payer_id, exp_cat)
+                        )
+                        new_eid = cur_e.lastrowid
+                        for s in splits:
+                            s_name = (s.get("member_name") or "").strip()
+                            s_share = s.get("share_paise", 0)
+                            s_mem = conn.execute(
+                                "SELECT id FROM members WHERE group_id = ? AND lower(name) = lower(?)",
+                                (gid, s_name)
+                            ).fetchone()
+                            if s_mem:
+                                conn.execute(
+                                    "INSERT OR IGNORE INTO expense_splits (expense_id, member_id, share_paise) VALUES (?, ?, ?)",
+                                    (new_eid, s_mem["id"], s_share)
+                                )
+                conn.commit()
+
+            # Fetch live members for this group to return to caller
+            m_rows = conn.execute(
+                "SELECT id, name, upi_id FROM members WHERE group_id = ? ORDER BY id",
+                (gid,)
+            ).fetchall()
+
+            res = row_to_dict(row)
+            res["members"] = rows_to_list(m_rows)
+            results.append(res)
 
     conn.close()
     return jsonify(results)

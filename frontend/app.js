@@ -66,6 +66,43 @@ function removeTripFromDevice(id) {
   loadGroups();
 }
 
+/** Local storage cache helpers for members and expenses per trip */
+function getCachedMembers(code) {
+  if (!code) return [];
+  try {
+    return JSON.parse(localStorage.getItem(`innov8_members_${code.toLowerCase()}`)) || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveCachedMembers(code, members) {
+  if (!code || !Array.isArray(members)) return;
+  const list = members.map(m => ({ name: m.name, upi_id: m.upi_id || "" }));
+  localStorage.setItem(`innov8_members_${code.toLowerCase()}`, JSON.stringify(list));
+}
+
+function getCachedExpenses(code) {
+  if (!code) return [];
+  try {
+    return JSON.parse(localStorage.getItem(`innov8_expenses_${code.toLowerCase()}`)) || [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveCachedExpenses(code, expenses) {
+  if (!code || !Array.isArray(expenses)) return;
+  const list = expenses.map(e => ({
+    title:        e.title,
+    amount_paise: e.amount_paise,
+    payer_name:   e.payer_name,
+    category:     e.category || "General",
+    splits:       (e.splits || []).map(s => ({ member_name: s.member_name, share_paise: s.share_paise }))
+  }));
+  localStorage.setItem(`innov8_expenses_${code.toLowerCase()}`, JSON.stringify(list));
+}
+
 // Category emoji icons and colors
 const CATEGORY_ICONS = {
   Food:          "🍕",
@@ -198,12 +235,23 @@ async function loadGroups() {
   }
 
   // Sync client-side trips with the server instance so any newly spun-up containers
-  // immediately register the group and its invite code without 404s
+  // immediately register the group, its members, and expenses without 404s
   if (myTrips.length > 0) {
     try {
+      const syncPayload = myTrips.map(t => {
+        const code = t.invite_code || "";
+        return {
+          id:          t.id,
+          name:        t.name,
+          invite_code: code,
+          members:     getCachedMembers(code),
+          expenses:    getCachedExpenses(code)
+        };
+      });
+
       const syncedTrips = await api("/groups/sync", {
         method: "POST",
-        body: JSON.stringify({ trips: myTrips })
+        body: JSON.stringify({ trips: syncPayload })
       });
       if (Array.isArray(syncedTrips) && syncedTrips.length > 0) {
         // Update trips with live IDs/metadata from server without deleting any trips
@@ -216,6 +264,9 @@ async function loadGroups() {
             myTrips[idx] = { id: st.id, name: st.name, invite_code: st.invite_code };
           } else {
             myTrips.push({ id: st.id, name: st.name, invite_code: st.invite_code });
+          }
+          if (st.invite_code && Array.isArray(st.members) && st.members.length > 0) {
+            saveCachedMembers(st.invite_code, st.members);
           }
         });
         localStorage.setItem("innov8_my_trips", JSON.stringify(myTrips));
@@ -380,8 +431,35 @@ async function loadMembers() {
   list.innerHTML = `<p class="loading-msg">Loading members…</p>`;
 
   try {
-    const summary = await api(`/groups/${state.groupId}/summary`);
+    let summary = await api(`/groups/${state.groupId}/summary`);
+
+    // Self-healing: If server returns 0 members but device has cached members (due to serverless restart):
+    const cachedM = state.groupInviteCode ? getCachedMembers(state.groupInviteCode) : [];
+    const cachedE = state.groupInviteCode ? getCachedExpenses(state.groupInviteCode) : [];
+    if (summary.members.length === 0 && cachedM.length > 0) {
+      try {
+        await api("/groups/sync", {
+          method: "POST",
+          body: JSON.stringify({
+            trips: [{
+              id:          state.groupId,
+              name:        state.groupName,
+              invite_code: state.groupInviteCode,
+              members:     cachedM,
+              expenses:    cachedE
+            }]
+          })
+        });
+        summary = await api(`/groups/${state.groupId}/summary`);
+      } catch (e) {
+        console.warn("Member re-hydration attempt:", e);
+      }
+    }
+
     state.members = summary.members;
+    if (state.groupInviteCode && summary.members.length > 0) {
+      saveCachedMembers(state.groupInviteCode, summary.members);
+    }
 
     // Render vivid summary cards with icons
     document.getElementById("summaryCards").innerHTML = `
@@ -457,9 +535,16 @@ async function loadMembers() {
       try {
         const myTrips = getMyTrips();
         if (myTrips.length > 0) {
+          const syncPayload = myTrips.map(t => ({
+            id:          t.id,
+            name:        t.name,
+            invite_code: t.invite_code || "",
+            members:     getCachedMembers(t.invite_code),
+            expenses:    getCachedExpenses(t.invite_code)
+          }));
           const synced = await api("/groups/sync", {
             method: "POST",
-            body: JSON.stringify({ trips: myTrips })
+            body: JSON.stringify({ trips: syncPayload })
           });
           if (Array.isArray(synced)) {
             const current = synced.find(s =>
@@ -488,10 +573,18 @@ async function addMember(name, upiId) {
       body: JSON.stringify({ name, upi_id: upiId }),
     });
 
+    if (state.groupInviteCode) {
+      const current = getCachedMembers(state.groupInviteCode);
+      if (!current.some(m => m.name.toLowerCase() === name.toLowerCase())) {
+        current.push({ name, upi_id: upiId || "" });
+        saveCachedMembers(state.groupInviteCode, current);
+      }
+    }
+
     toast(`${name} joined the group! 🎉`);
     closeModal("modalAddMember");
     document.getElementById("formAddMember").reset();
-    loadMembers();
+    await loadMembers();
   } catch (e) {
     showErr("errAddMember", e.message);
   }
@@ -502,8 +595,12 @@ async function removeMember(memberId, name) {
 
   try {
     await api(`/members/${memberId}`, { method: "DELETE" });
+    if (state.groupInviteCode) {
+      const current = getCachedMembers(state.groupInviteCode).filter(m => m.name.toLowerCase() !== name.toLowerCase());
+      saveCachedMembers(state.groupInviteCode, current);
+    }
     toast(`${name} removed.`);
-    loadMembers();
+    await loadMembers();
   } catch (e) {
     toast(e.message, "error");
   }
@@ -521,6 +618,10 @@ async function loadExpenses() {
 
   try {
     const expenses = await api(`/groups/${state.groupId}/expenses`);
+
+    if (state.groupInviteCode && expenses.length > 0) {
+      saveCachedExpenses(state.groupInviteCode, expenses);
+    }
 
     if (!expenses.length) {
       list.innerHTML = `<p class="empty-msg">No expenses logged yet. Tap "+ Add Expense" to record one!</p>`;
@@ -681,6 +782,10 @@ async function deleteExpense(expId, title) {
 
   try {
     await api(`/expenses/${expId}`, { method: "DELETE" });
+    if (state.groupInviteCode) {
+      const current = getCachedExpenses(state.groupInviteCode).filter(e => e.title !== title);
+      saveCachedExpenses(state.groupInviteCode, current);
+    }
     toast(`"${title}" deleted.`);
     loadExpenses();
     loadMembers();
