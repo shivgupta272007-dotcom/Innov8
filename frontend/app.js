@@ -17,7 +17,10 @@
 // 1.  CONSTANTS & APPLICATION STATE
 // ══════════════════════════════════════════════════════════
 
-const API = "http://localhost:5000/api";
+// Dynamic API URL: uses relative "/api" on all domains (Vercel, Cloudflare, LAN, local Flask)
+const API = (window.location.port === "5500" || window.location.port === "3000")
+  ? "http://localhost:5000/api"
+  : "/api";
 
 const state = {
   groupId:       null,
