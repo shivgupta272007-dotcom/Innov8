@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+venv/
+.env
+
+# Native compiled binaries (built locally per platform)
+c/validate_csv
+cpp/*.so
+cpp/*.dll
+cpp/*.o
+cpp/*.a
+
+# Java class files
+java/*.class
+
+# Operating System
+.DS_Store
+Thumbs.db
+
+# Dynamic Backups
+backend/innov8_backup_*.db
+
+# Vercel project cache
+.vercel

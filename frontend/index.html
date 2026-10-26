@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<!--
+  index.html – Innov8 Smart Expense Manager
+  ==========================================
+  Single-Page Application (SPA) with a vibrant dark theme,
+  micro-animations, Chart.js live analytics, group chat,
+  and instant UPI/QR settlements.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Innov8 – Smart Expense Manager</title>
+
+  <!-- Google Font: Inter / Outfit for modern, clean typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Our custom stylesheet -->
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Chart.js loaded locally (bundled, zero CDN dependency) -->
+  <script src="chart.umd.min.js"></script>
+</head>
+
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     HEADER
+     ═══════════════════════════════════════════════════════════ -->
+<header class="app-header">
+  <div class="header-brand">
+    <div class="logo-box">
+      <span class="logo">₹</span>
+      <span class="logo-sparkle">✨</span>
+    </div>
+    <div class="brand-text">
+      <h1>Innov8</h1>
+      <span class="tagline">Smart Expense Splitter & Settlement</span>
+    </div>
+  </div>
+
+  <!-- Group selector bar -->
+  <div class="group-bar">
+    <div class="select-wrapper">
+      <span class="select-icon">✈️</span>
+      <select id="groupSelect" aria-label="Select group">
+        <option value="">— Select a group —</option>
+      </select>
+    </div>
+    <button id="btnNewGroup" class="btn btn-accent btn-glow">+ New Group</button>
+    <button id="btnConnectMobile" class="btn btn-outline btn-connect" title="Connect other devices via QR or Link">📱 Connect Mobile</button>
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════
+     MAIN CONTENT  (hidden until a group is selected)
+     ═══════════════════════════════════════════════════════════ -->
+<main id="mainContent" class="hidden">
+
+  <!-- ── Tab Navigation ───────────────────────────────────── -->
+  <nav class="tab-nav" role="tablist">
+    <button class="tab-btn active" data-tab="members"   role="tab"><span class="tab-icon">👥</span> Members</button>
+    <button class="tab-btn"        data-tab="expenses"  role="tab"><span class="tab-icon">💸</span> Expenses</button>
+    <button class="tab-btn"        data-tab="analytics" role="tab"><span class="tab-icon">📊</span> Analytics</button>
+    <button class="tab-btn"        data-tab="chat"      role="tab"><span class="tab-icon">💬</span> Chat & Settle</button>
+  </nav>
+
+  <!-- ── PANEL 1: Members ─────────────────────────────────── -->
+  <section id="panel-members" class="panel active" role="tabpanel">
+    <div class="panel-header">
+      <div>
+        <h2>Group Standing</h2>
+        <p class="panel-subtitle">Live overview of group spending and net balances</p>
+      </div>
+      <button id="btnAddMember" class="btn btn-accent">+ Add Member</button>
+    </div>
+
+    <!-- Summary cards (total spend, per-head, member count) -->
+    <div class="summary-cards" id="summaryCards">
+      <!-- Filled dynamically by JS -->
+    </div>
+
+    <!-- Member list with balances -->
+    <div id="membersList" class="card-list">
+      <p class="loading-msg">Loading members…</p>
+    </div>
+  </section>
+
+  <!-- ── PANEL 2: Expenses ─────────────────────────────────── -->
+  <section id="panel-expenses" class="panel" role="tabpanel">
+    <div class="panel-header">
+      <div>
+        <h2>Expenses Log</h2>
+        <p class="panel-subtitle">Track payments, categories, and split distributions</p>
+      </div>
+      <div class="panel-actions">
+        <button id="btnAddExpense"  class="btn btn-accent">+ Add Expense</button>
+        <a id="btnExportCSV" class="btn btn-outline" target="_blank">⬇ Export CSV</a>
+      </div>
+    </div>
+
+    <div id="expensesList" class="card-list">
+      <p class="loading-msg">Loading expenses…</p>
+    </div>
+  </section>
+
+  <!-- ── PANEL 3: Analytics ────────────────────────────────── -->
+  <section id="panel-analytics" class="panel" role="tabpanel">
+    <div class="panel-header">
+      <div>
+        <h2>Live Spend Analytics</h2>
+        <p class="panel-subtitle">Interactive visual breakdown of group expenses</p>
+      </div>
+      <div class="analytics-badges" id="analyticsBadges">
+        <!-- Live summary tags: Top Spender, Top Category -->
+      </div>
+    </div>
+
+    <!-- Analytics Key Metrics Grid -->
+    <div class="analytics-stat-row" id="analyticsStatRow">
+      <!-- Injected by JS -->
+    </div>
+
+    <div class="charts-grid">
+      <!-- Bar chart: spend by member -->
+      <div class="chart-card">
+        <div class="chart-card-header">
+          <div class="chart-title">
+            <span class="chart-emoji">💳</span>
+            <h3>Spend by Participant</h3>
+          </div>
+          <span class="chart-tag">Contribution</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="chartByMember" aria-label="Bar chart: spend by person"></canvas>
+        </div>
+        <div id="memberSpendBars" class="breakdown-list"></div>
+      </div>
+
+      <!-- Doughnut chart: spend by category -->
+      <div class="chart-card">
+        <div class="chart-card-header">
+          <div class="chart-title">
+            <span class="chart-emoji">🏷️</span>
+            <h3>Spend by Category</h3>
+          </div>
+          <span class="chart-tag">Categories</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="chartByCategory" aria-label="Doughnut chart: spend by category"></canvas>
+        </div>
+        <div id="categorySpendPills" class="category-pills-wrap"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── PANEL 4: Chat + Settlement ────────────────────────── -->
+  <section id="panel-chat" class="panel" role="tabpanel">
+    <div class="chat-settle-grid">
+
+      <!-- Left: Chat -->
+      <div class="chat-box">
+        <div class="chat-header">
+          <div class="chat-header-title">
+            <span class="pulse-indicator"></span>
+            <h2>Group Chat</h2>
+          </div>
+          <span class="chat-refresh-badge">Live (5s poll)</span>
+        </div>
+        <div id="chatMessages" class="chat-messages" aria-live="polite">
+          <!-- Messages appear here -->
+        </div>
+        <form id="chatForm" class="chat-form" autocomplete="off">
+          <input id="chatSender" type="text" placeholder="Your name"
+                 maxlength="80" required aria-label="Your name">
+          <input id="chatBody"   type="text" placeholder="Type a message…"
+                 maxlength="500" required aria-label="Message">
+          <button type="submit" class="btn btn-accent btn-send">Send ✈️</button>
+        </form>
+      </div>
+
+      <!-- Right: Settlements -->
+      <div class="settle-box">
+        <div class="settle-header">
+          <div class="settle-header-title">
+            <span class="settle-spark">⚡</span>
+            <h2>Smart Settlement Plan</h2>
+          </div>
+          <button id="btnRecalculate" class="btn btn-outline btn-sm">↻ Recalculate</button>
+        </div>
+        <p class="settle-note">
+          Optimized using C++ greedy two-heap debt simplification (minimum transactions).
+        </p>
+        <div id="settlementsList">
+          <p class="loading-msg">Loading settlements…</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<!-- ═══════════════════════════════════════════════════════════
+     WELCOME SCREEN  (shown when no group is selected)
+     ═══════════════════════════════════════════════════════════ -->
+<div id="welcome" class="welcome-screen">
+  <div class="welcome-card">
+    <div class="welcome-badge-tag">🚀 No Login Required</div>
+    <div class="welcome-icon-stack">
+      <span class="floating-bubble bubble-1">🍕</span>
+      <span class="floating-bubble bubble-2">🚕</span>
+      <span class="floating-bubble bubble-3">🏨</span>
+      <div class="welcome-logo">₹</div>
+    </div>
+    <h2>Smart Expense Splitting</h2>
+    <p>Track group spending, visualize live analytics, chat with your team, and settle up via instant UPI QR codes.</p>
+    <button id="btnWelcomeNew" class="btn btn-accent btn-lg btn-glow">✨ Create Your First Group</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     MODAL: New Group
+     ═══════════════════════════════════════════════════════════ -->
+<div id="modalNewGroup" class="modal-overlay hidden" role="dialog" aria-modal="true"
+     aria-labelledby="modalNewGroupTitle">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modalNewGroupTitle">🎉 Create New Group</h3>
+      <button class="modal-close" data-close="modalNewGroup" aria-label="Close">✕</button>
+    </div>
+    <form id="formNewGroup">
+      <label for="inputGroupName">Group Name</label>
+      <input id="inputGroupName" type="text" placeholder="e.g. Goa Trip, Flat 402, Weekend Outing"
+             maxlength="100" required>
+      <div class="form-error" id="errNewGroup"></div>
+      <div class="modal-footer">
+        <button type="submit" class="btn btn-accent btn-glow">Create Group 🚀</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     MODAL: Add Member
+     ═══════════════════════════════════════════════════════════ -->
+<div id="modalAddMember" class="modal-overlay hidden" role="dialog" aria-modal="true"
+     aria-labelledby="modalAddMemberTitle">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modalAddMemberTitle">👤 Add New Member</h3>
+      <button class="modal-close" data-close="modalAddMember" aria-label="Close">✕</button>
+    </div>
+    <form id="formAddMember">
+      <label for="inputMemberName">Participant Name</label>
+      <input id="inputMemberName" type="text" placeholder="e.g. Rahul, Priya, Alex"
+             maxlength="80" required>
+
+      <label for="inputMemberUpi">UPI ID / VPA <span class="optional">(optional, for QR payments)</span></label>
+      <input id="inputMemberUpi" type="text" placeholder="e.g. rahul@okaxis, priya@upi">
+
+      <div class="form-error" id="errAddMember"></div>
+      <div class="modal-footer">
+        <button type="submit" class="btn btn-accent">Add Member</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     MODAL: Add Expense
+     ═══════════════════════════════════════════════════════════ -->
+<div id="modalAddExpense" class="modal-overlay hidden" role="dialog" aria-modal="true"
+     aria-labelledby="modalAddExpenseTitle">
+  <div class="modal-box modal-box-wide">
+    <div class="modal-header">
+      <h3 id="modalAddExpenseTitle">💸 Add New Expense</h3>
+      <button class="modal-close" data-close="modalAddExpense" aria-label="Close">✕</button>
+    </div>
+    <form id="formAddExpense">
+
+      <div class="form-row">
+        <div class="form-col">
+          <label for="inputExpTitle">Expense Title</label>
+          <input id="inputExpTitle" type="text" placeholder="e.g. Beach Shack Dinner, Highway Toll"
+                 maxlength="120" required>
+        </div>
+        <div class="form-col">
+          <label for="inputExpAmount">Amount (₹)</label>
+          <input id="inputExpAmount" type="number" placeholder="0.00"
+                 min="0.01" step="0.01" required>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-col">
+          <label for="inputExpPayer">Paid By</label>
+          <select id="inputExpPayer" required>
+            <option value="">— Select payer —</option>
+          </select>
+        </div>
+        <div class="form-col">
+          <label for="inputExpCategory">Category</label>
+          <select id="inputExpCategory">
+            <option value="Food">🍕 Food & Dining</option>
+            <option value="Transport">🚕 Transport & Travel</option>
+            <option value="Stay">🏨 Stay & Hotel</option>
+            <option value="Entertainment">🎟️ Entertainment</option>
+            <option value="Shopping">🛍️ Shopping</option>
+            <option value="General">📦 General & Misc</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="split-section">
+        <label>How to Split</label>
+        <div class="radio-group-cards">
+          <label class="radio-card">
+            <input type="radio" name="splitType" value="equal" checked>
+            <div class="rc-content">
+              <strong>Equal Split</strong>
+              <span>Evenly split among all members</span>
+            </div>
+          </label>
+          <label class="radio-card">
+            <input type="radio" name="splitType" value="custom">
+            <div class="rc-content">
+              <strong>Custom Split</strong>
+              <span>Manually specify exact individual amounts</span>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <!-- Custom split rows – hidden unless "custom" is chosen -->
+      <div id="customSplitRows" class="hidden custom-split-wrapper">
+        <p class="split-hint">
+          Enter each member's individual share. Total sum must exactly equal the total amount.
+        </p>
+        <div id="customSplitInputs">
+          <!-- Populated by JS when custom is selected -->
+        </div>
+        <p id="splitSumDisplay" class="split-sum"></p>
+      </div>
+
+      <div class="form-error" id="errAddExpense"></div>
+      <div class="modal-footer">
+        <button type="submit" class="btn btn-accent btn-glow">Save Expense</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     MODAL: QR Code / UPI Payment
+     ═══════════════════════════════════════════════════════════ -->
+<div id="modalQR" class="modal-overlay hidden" role="dialog" aria-modal="true"
+     aria-labelledby="modalQRTitle">
+  <div class="modal-box modal-box-narrow text-center">
+    <div class="modal-header">
+      <h3 id="modalQRTitle">⚡ UPI Payment</h3>
+      <button class="modal-close" data-close="modalQR" aria-label="Close">✕</button>
+    </div>
+    <div class="qr-content">
+      <p id="qrDesc" class="qr-desc"></p>
+      <div class="qr-card-frame">
+        <img id="qrImage" src="" alt="UPI QR Code" class="qr-image">
+      </div>
+      <a id="qrUpiLink" href="#" class="btn btn-accent btn-lg btn-glow qr-btn">
+        📱 Open in UPI App (GPay/PhonePe/Paytm)
+      </a>
+      <p class="qr-note">Scan this QR or tap the button above to pay directly via any UPI app</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     MODAL: Connect Any Device (QR / Link)
+     ═══════════════════════════════════════════════════════════ -->
+<div id="modalConnectMobile" class="modal-overlay hidden" role="dialog" aria-modal="true"
+     aria-labelledby="modalConnectTitle">
+  <div class="modal-box modal-box-narrow text-center">
+    <div class="modal-header">
+      <h3 id="modalConnectTitle">📱 Connect Any Device</h3>
+      <button class="modal-close" data-close="modalConnectMobile" aria-label="Close">✕</button>
+    </div>
+    <div class="connect-modal-content">
+      <p class="connect-desc">
+        Use Innov8 across multiple phones & laptops without being on the same Wi-Fi!
+      </p>
+
+      <div class="connect-tabs">
+        <button id="btnTabPublic" class="btn-connect-tab active" type="button">🌍 Public Internet (4G/5G)</button>
+        <button id="btnTabLocal" class="btn-connect-tab" type="button">📶 Local Wi-Fi</button>
+      </div>
+
+      <div class="qr-card-frame qr-connect-frame">
+        <div id="connectQRCode" class="connect-qr-box"></div>
+      </div>
+
+      <div class="connect-url-box">
+        <input id="connectUrlInput" type="text" readonly aria-label="Device link">
+        <button id="btnCopyConnectUrl" class="btn btn-sm btn-accent" type="button">Copy 📋</button>
+      </div>
+
+      <p id="connectHint" class="connect-hint">
+        ⚡ Point your phone camera at the QR code above or share the link on WhatsApp to collaborate live!
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- Toast notification -->
+<div id="toast" class="toast hidden" role="alert" aria-live="assertive"></div>
+
+<!-- QR Code generator library (offline) -->
+<script src="qrcode.min.js"></script>
+
+<!-- Main application script -->
+<script src="app.js"></script>
+</body>
+</html>

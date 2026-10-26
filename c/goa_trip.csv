@@ -1,0 +1,17 @@
+expense_id,title,category,amount_paise,payer_name,member_name,share_paise,created_at
+1,Dinner,Food,240000,Shubh,Shubh,60000,2026-10-26 14:13:21
+1,Dinner,Food,240000,Shubh,Shiv,60000,2026-10-26 14:13:21
+1,Dinner,Food,240000,Shubh,Shivansh,60000,2026-10-26 14:13:21
+1,Dinner,Food,240000,Shubh,Shubham,60000,2026-10-26 14:13:21
+2,Cab,Transport,86000,Shiv,Shubh,21500,2026-10-26 14:13:21
+2,Cab,Transport,86000,Shiv,Shiv,21500,2026-10-26 14:13:21
+2,Cab,Transport,86000,Shiv,Shivansh,21500,2026-10-26 14:13:21
+2,Cab,Transport,86000,Shiv,Shubham,21500,2026-10-26 14:13:21
+3,Hotel,Stay,600000,Shivansh,Shubh,150000,2026-10-26 14:13:21
+3,Hotel,Stay,600000,Shivansh,Shiv,150000,2026-10-26 14:13:21
+3,Hotel,Stay,600000,Shivansh,Shivansh,150000,2026-10-26 14:13:21
+3,Hotel,Stay,600000,Shivansh,Shubham,150000,2026-10-26 14:13:21
+4,Snacks,Food,54000,Shubham,Shubh,13500,2026-10-26 14:13:21
+4,Snacks,Food,54000,Shubham,Shiv,13500,2026-10-26 14:13:21
+4,Snacks,Food,54000,Shubham,Shivansh,13500,2026-10-26 14:13:21
+4,Snacks,Food,54000,Shubham,Shubham,13500,2026-10-26 14:13:21
